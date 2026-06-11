@@ -44,6 +44,7 @@ public class Customer
 public interface ICustomerRepository
 {
     Customer GetCustomerById(int customerId);
+    void UpdateBalance(int customerId, decimal newBalance);
 }
 
 public class CustomerRepository : ICustomerRepository
@@ -77,6 +78,16 @@ public class CustomerRepository : ICustomerRepository
 
         return null;
     }
+
+    public void UpdateBalance(int customerId, decimal newBalance)
+    {
+        using var conn = new SqlConnection(_connectionString);
+        conn.Open();
+        using var cmd = new SqlCommand("UPDATE customers SET balance = @newBalance WHERE id = @customerId", conn);
+        cmd.Parameters.AddWithValue("@newBalance", newBalance);
+        cmd.Parameters.AddWithValue("@customerId", customerId);
+        cmd.ExecuteNonQuery();
+    }
 }
 
 public class Room
@@ -89,6 +100,7 @@ public class Room
 public interface IRoomRepository
 {
     Room GetRoomById(int roomId);
+    void UpdateRoomAvailability(int roomId, bool isAvailable);
 }
 
 public class RoomRepository : IRoomRepository
@@ -121,6 +133,16 @@ public class RoomRepository : IRoomRepository
         }
 
         return null;
+    }
+
+    public void UpdateRoomAvailability(int roomId, bool isAvailable)
+    {
+        using var conn = new SqlConnection(_connectionString);
+        conn.Open();
+        using var cmd = new SqlCommand("UPDATE rooms SET is_available = @isAvailable WHERE id = @roomId", conn);
+        cmd.Parameters.AddWithValue("@isAvailable", isAvailable);
+        cmd.Parameters.AddWithValue("@roomId", roomId);
+        cmd.ExecuteNonQuery();
     }
 }
 
@@ -236,8 +258,19 @@ public class ReservationManager : IReservationManager
             return msg;
         }
 
-        // Update room availability and customer balance here...
-        _reservationRepository.CreateReservation(customerId, roomId, roomType, nights, total, discountCode, customer.MembershipLevel);
+        try
+        {
+            _roomRepository.UpdateRoomAvailability(roomId, false);
+            _customerRepository.UpdateBalance(customerId, customer.Balance - total);
+            _reservationRepository.CreateReservation(customerId, roomId, roomType, nights, total, discountCode, customer.MembershipLevel);
+        }
+        catch (Exception ex)
+        {
+            msg = $"Error creating reservation: {ex.Message}";
+            _logger.LogError(ex, msg);
+            return msg;
+        }
+
         msg = $"Reservation created for customer {customer.Name} room {room.RoomNumber} nights {nights} total {total}";
         _logger.LogInformation(msg);
         return msg;
